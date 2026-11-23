@@ -1,0 +1,666 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Perfil de usuário cadastrado (cliente, prestador ou administrador), com isolamento de dados, documentos de verificação e carteira digital.",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "Identificador único do usuário, correspondente ao Firebase Auth UID ou ID de cadastro."
+        },
+        "name": {
+          "type": "string",
+          "description": "Nome completo do usuário."
+        },
+        "email": {
+          "type": "string",
+          "description": "E-mail de contato cadastrado."
+        },
+        "phone": {
+          "type": "string",
+          "description": "Telefone verificado por SMS no formato internacional E.164 ou nacional."
+        },
+        "role": {
+          "type": "string",
+          "enum": ["CLIENTE", "PRESTADOR", "ADMIN"],
+          "description": "Papel do usuário no sistema (CLIENTE, PRESTADOR ou ADMIN)."
+        },
+        "category": {
+          "type": "string",
+          "description": "Categoria de atuação profissional do prestador."
+        },
+        "bio": {
+          "type": "string",
+          "description": "Descrição profissional ou biografia do usuário."
+        },
+        "city": {
+          "type": "string",
+          "description": "Cidade e estado de atuação."
+        },
+        "document": {
+          "type": "string",
+          "description": "Documento de identificação (CPF ou CNPJ)."
+        },
+        "rating": {
+          "type": "number",
+          "description": "Média de avaliações do usuário (de 1.0 a 5.0)."
+        },
+        "ratingCount": {
+          "type": "integer",
+          "description": "Total de avaliações recebidas pelo prestador."
+        },
+        "completedJobs": {
+          "type": "integer",
+          "description": "Contagem de serviços finalizados com sucesso."
+        },
+        "walletBalance": {
+          "type": "number",
+          "description": "Saldo em reais na carteira digital para débito automático da taxa de 10%."
+        },
+        "isPhoneVerified": {
+          "type": "boolean",
+          "description": "Indica se o telefone foi autenticado via SMS OTP."
+        },
+        "verificationStatus": {
+          "type": "string",
+          "enum": ["PENDENTE_ANALISE", "APROVADO", "REJEITADO", "REPROVADO"],
+          "description": "Status de validação dos documentos do prestador pelo administrador."
+        },
+        "documents": {
+          "type": "object",
+          "description": "Documentos enviados pelo prestador (CNH/RG, Certidão de Antecedentes, Selfie) e metadados da análise administrativa."
+        },
+        "avatarColorHex": {
+          "type": "integer",
+          "description": "Cor primária do avatar gerado."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp de criação gerenciado pelo servidor (FieldValue.serverTimestamp())."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp de atualização gerenciado pelo servidor (FieldValue.serverTimestamp())."
+        }
+      },
+      "required": ["userId", "name", "phone", "role", "createdAt"]
+    },
+    "DocumentReviewAudit": {
+      "title": "DocumentReviewAudit",
+      "description": "Registro imutável de auditoria das decisões do administrador sobre a documentação do prestador (CNH/Identidade, Antecedentes, Selfie).",
+      "type": "object",
+      "properties": {
+        "providerId": {
+          "type": "string",
+          "description": "ID do prestador avaliado."
+        },
+        "providerName": {
+          "type": "string",
+          "description": "Nome do prestador avaliado."
+        },
+        "decision": {
+          "type": "string",
+          "enum": ["APROVADO", "REJEITADO", "REPROVADO"],
+          "description": "Decisão final da análise documental."
+        },
+        "reason": {
+          "type": "string",
+          "description": "Motivo da reprovação ou observação administrativa."
+        },
+        "adminUid": {
+          "type": "string",
+          "description": "UID do administrador responsável pela análise."
+        },
+        "adminEmail": {
+          "type": "string",
+          "description": "E-mail do administrador responsável pela análise."
+        },
+        "idDocVerified": {
+          "type": "boolean",
+          "description": "Indica se CNH/RG foi conferida."
+        },
+        "criminalRecordVerified": {
+          "type": "boolean",
+          "description": "Indica se certidão de antecedentes criminais foi conferida."
+        },
+        "selfieVerified": {
+          "type": "boolean",
+          "description": "Indica se a selfie com documento foi conferida."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp da decisão gerado pelo servidor (FieldValue.serverTimestamp())."
+        }
+      },
+      "required": ["providerId", "decision", "adminUid", "createdAt"]
+    },
+    "WalletTransaction": {
+      "title": "WalletTransaction",
+      "description": "Registro de transação financeira na carteira digital do prestador (débito de taxa de 10%, recargas Pix e estornos).",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Identificador único da transação."
+        },
+        "providerId": {
+          "type": "string",
+          "description": "UID do prestador proprietário da carteira."
+        },
+        "type": {
+          "type": "string",
+          "enum": ["DEBITO_TAXA_10", "RECARGA_PIX", "REEMBOLSO", "CREDITO_ADMIN"],
+          "description": "Tipo de movimentação financeira na carteira."
+        },
+        "amount": {
+          "type": "number",
+          "description": "Valor monetário movimentado em reais."
+        },
+        "serviceId": {
+          "type": "string",
+          "description": "Identificador do serviço vinculado ao débito da taxa de 10%."
+        },
+        "serviceTitle": {
+          "type": "string",
+          "description": "Título do serviço contratado."
+        },
+        "description": {
+          "type": "string",
+          "description": "Descrição detalhada do lançamento na carteira."
+        },
+        "balanceAfter": {
+          "type": "number",
+          "description": "Saldo resultante após o lançamento."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp de efetivação do lançamento no servidor (FieldValue.serverTimestamp())."
+        }
+      },
+      "required": ["providerId", "type", "amount", "balanceAfter", "createdAt"]
+    },
+    "ServiceRequest": {
+      "title": "ServiceRequest",
+      "description": "Solicitação de serviço publicada pelo cliente. Visível no mural para prestadores credenciados e restrita ao próprio cliente.",
+      "type": "object",
+      "properties": {
+        "clientId": {
+          "type": "string",
+          "description": "UID do cliente autor do pedido."
+        },
+        "clientName": {
+          "type": "string",
+          "description": "Nome do cliente solicitante."
+        },
+        "title": {
+          "type": "string",
+          "description": "Título descritivo do serviço requerido."
+        },
+        "category": {
+          "type": "string",
+          "description": "Categoria do serviço (ex: Eletricista, Encanador, Pintura)."
+        },
+        "description": {
+          "type": "string",
+          "description": "Detalhes técnicos da necessidade."
+        },
+        "location": {
+          "type": "string",
+          "description": "Endereço ou bairro da realização do serviço."
+        },
+        "latitude": {
+          "type": "number",
+          "description": "Latitude para cálculo de rota e tempo de deslocamento."
+        },
+        "longitude": {
+          "type": "number",
+          "description": "Longitude para cálculo de rota e tempo de deslocamento."
+        },
+        "proposedBudget": {
+          "type": "number",
+          "description": "Orçamento inicial proposto pelo cliente (negociável estilo inDrive)."
+        },
+        "urgency": {
+          "type": "string",
+          "description": "Grau de urgência (Alta, Média ou Baixa)."
+        },
+        "status": {
+          "type": "string",
+          "enum": ["ABERTO", "EM_NEGOCIACAO", "ACEITO", "EM_ANDAMENTO", "CONCLUIDO", "CANCELADO"],
+          "description": "Estado atual do ciclo de vida do pedido."
+        },
+        "assignedProviderId": {
+          "type": "string",
+          "description": "UID do prestador contratado após aceite da proposta."
+        },
+        "assignedProviderName": {
+          "type": "string",
+          "description": "Nome do prestador selecionado."
+        },
+        "finalAgreedPrice": {
+          "type": "number",
+          "description": "Valor final negociado e acordado entre cliente e prestador."
+        },
+        "platformFee": {
+          "type": "number",
+          "description": "Taxa de 10% debitada da carteira do prestador ao aceitar."
+        },
+        "ratingGiven": {
+          "type": "number",
+          "description": "Nota de 1 a 5 estrelas atribuída pelo cliente após a conclusão."
+        },
+        "reviewComment": {
+          "type": "string",
+          "description": "Comentário escrito na avaliação pós-serviço."
+        },
+        "reviewTags": {
+          "type": "array",
+          "description": "Selos de destaque selecionados na avaliação."
+        },
+        "reviewedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp da avaliação gerado pelo servidor (FieldValue.serverTimestamp())."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp de publicação (FieldValue.serverTimestamp())."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp da última alteração de orçamento ou status."
+        }
+      },
+      "required": ["clientId", "clientName", "title", "category", "proposedBudget", "status", "createdAt"]
+    },
+    "Proposal": {
+      "title": "Proposal",
+      "description": "Proposta e contrapropostas de preço e prazo para um serviço específico.",
+      "type": "object",
+      "properties": {
+        "serviceId": {
+          "type": "string",
+          "description": "Identificador da solicitação de serviço vinculada."
+        },
+        "clientId": {
+          "type": "string",
+          "description": "UID do cliente que contratou/abriu o serviço."
+        },
+        "providerId": {
+          "type": "string",
+          "description": "UID do prestador que enviou a proposta."
+        },
+        "providerName": {
+          "type": "string",
+          "description": "Nome do prestador de serviços."
+        },
+        "providerRating": {
+          "type": "number",
+          "description": "Avaliação média do prestador no momento da proposta."
+        },
+        "providerCategory": {
+          "type": "string",
+          "description": "Especialidade do prestador."
+        },
+        "proposedPrice": {
+          "type": "number",
+          "description": "Valor proposto em reais para o serviço."
+        },
+        "estimatedDays": {
+          "type": "integer",
+          "description": "Estimativa de tempo em dias para conclusão."
+        },
+        "description": {
+          "type": "string",
+          "description": "Justificativa da proposta e metodologia de trabalho."
+        },
+        "status": {
+          "type": "string",
+          "enum": ["ENVIADA", "CONTRAPROPOSTA_CLIENTE", "CONTRAPROPOSTA_PRESTADOR", "ACEITA", "RECUSADA"],
+          "description": "Status da negociação de valor."
+        },
+        "counterOffers": {
+          "type": "array",
+          "description": "Histórico de lances de contraproposta com autor, valor e data."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp de criação (FieldValue.serverTimestamp())."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp da última contraproposta ou decisão."
+        }
+      },
+      "required": ["serviceId", "clientId", "providerId", "proposedPrice", "status", "createdAt"]
+    },
+    "ChatMessage": {
+      "title": "ChatMessage",
+      "description": "Mensagem privada em tempo real protegida contra compartilhamento de dados de contato externos.",
+      "type": "object",
+      "properties": {
+        "serviceId": {
+          "type": "string",
+          "description": "Identificador do serviço aceito ao qual o chat pertence."
+        },
+        "senderId": {
+          "type": "string",
+          "description": "UID do remetente da mensagem."
+        },
+        "senderName": {
+          "type": "string",
+          "description": "Nome do autor da mensagem."
+        },
+        "senderRole": {
+          "type": "string",
+          "enum": ["CLIENTE", "PRESTADOR", "SISTEMA"],
+          "description": "Papel do remetente da mensagem."
+        },
+        "content": {
+          "type": "string",
+          "description": "Texto da mensagem verificado pela política de proteção de dados."
+        },
+        "isSystemNotice": {
+          "type": "boolean",
+          "description": "Indica se é um aviso do sistema (ex: status atualizado ou proposta aceita)."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp da mensagem (FieldValue.serverTimestamp())."
+        }
+      },
+      "required": ["serviceId", "senderId", "senderName", "senderRole", "content", "createdAt"]
+    },
+    "ServiceReview": {
+      "title": "ServiceReview",
+      "description": "Avaliação pós-serviço de 1 a 5 estrelas registrada pelo cliente após a conclusão do atendimento.",
+      "type": "object",
+      "properties": {
+        "serviceId": {
+          "type": "string",
+          "description": "Identificador do serviço concluído avaliado."
+        },
+        "serviceTitle": {
+          "type": "string",
+          "description": "Título do serviço concluído."
+        },
+        "serviceCategory": {
+          "type": "string",
+          "description": "Categoria do serviço concluído."
+        },
+        "clientId": {
+          "type": "string",
+          "description": "UID do cliente autor da avaliação."
+        },
+        "clientName": {
+          "type": "string",
+          "description": "Nome do cliente avaliador."
+        },
+        "clientPhotoUrl": {
+          "type": "string",
+          "description": "Foto de perfil do cliente avaliador."
+        },
+        "providerId": {
+          "type": "string",
+          "description": "UID do prestador avaliado."
+        },
+        "providerName": {
+          "type": "string",
+          "description": "Nome do prestador avaliado."
+        },
+        "rating": {
+          "type": "number",
+          "description": "Nota atribuída de 1 a 5 estrelas."
+        },
+        "comment": {
+          "type": "string",
+          "description": "Comentário descritivo da experiência do cliente."
+        },
+        "complimentTags": {
+          "type": "array",
+          "description": "Lista limitada de selos de elogio do serviço."
+        },
+        "providerReply": {
+          "type": "string",
+          "description": "Resposta opcional única enviada pelo prestador avaliado."
+        },
+        "repliedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp da resposta do prestador (FieldValue.serverTimestamp())."
+        },
+        "isPublic": {
+          "type": "boolean",
+          "description": "Indica visibilidade pública da avaliação para vitrine de reputação."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp de publicação da avaliação (FieldValue.serverTimestamp())."
+        }
+      },
+      "required": ["serviceId", "clientId", "clientName", "providerId", "rating", "isPublic", "createdAt"]
+    },
+    "AppNotification": {
+      "title": "AppNotification",
+      "description": "Notificação em tempo real vinculada à caixa de entrada de um usuário no Firestore.",
+      "type": "object",
+      "properties": {
+        "recipientId": {
+          "type": "string",
+          "description": "UID do destinatário da notificação."
+        },
+        "title": {
+          "type": "string",
+          "description": "Título curto da notificação."
+        },
+        "message": {
+          "type": "string",
+          "description": "Mensagem descritiva do evento."
+        },
+        "type": {
+          "type": "string",
+          "enum": ["NOVO_SERVICO", "PROPOSTA_RECEBIDA", "PROPOSTA_ACEITA", "NOVA_MENSAGEM", "STATUS_ATUALIZADO", "AVALIACAO_RECEBIDA", "DOCUMENTO_APROVADO", "DOCUMENTO_REJEITADO", "PAGAMENTO_PIX_CONFIRMADO"],
+          "description": "Categoria do evento notificado."
+        },
+        "serviceId": {
+          "type": "string",
+          "description": "ID opcional do serviço relacionado."
+        },
+        "isRead": {
+          "type": "boolean",
+          "description": "Indica se a notificação já foi lida pelo destinatário."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp de criação gerenciado pelo servidor (FieldValue.serverTimestamp())."
+        }
+      },
+      "required": ["recipientId", "title", "message", "type", "createdAt"]
+    },
+    "AdminUserCredential": {
+      "title": "AdminUserCredential",
+      "description": "Registro estritamente restrito ao Administrador para consulta e gerenciamento online de credenciais de acesso dos usuários.",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "Identificador do usuário proprietário da credencial."
+        },
+        "passwordHash": {
+          "type": "string",
+          "description": "Hash SHA-256 salted da senha."
+        },
+        "displayPassword": {
+          "type": "string",
+          "description": "Senha de acesso visível exclusivamente no painel administrativo."
+        },
+        "updatedBy": {
+          "type": "string",
+          "description": "UID de quem definiu ou atualizou a credencial."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp da última atualização (FieldValue.serverTimestamp())."
+        }
+      },
+      "required": ["userId"]
+    },
+    "LoginDirectoryEntry": {
+      "title": "LoginDirectoryEntry",
+      "description": "Índice hash SHA-256 sem PII para resolução multi-aparelho de login por e-mail ou telefone (somente get por chave hash; listagem bloqueada).",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "description": "ID canônico do perfil em /users/{uid}."
+        },
+        "authEmail": {
+          "type": "string",
+          "description": "E-mail canônico utilizado no Firebase Authentication."
+        },
+        "aliasAuthEmail": {
+          "type": "string",
+          "description": "E-mail auxiliar opcional provisionado pelo administrador para redefinição multi-aparelho."
+        },
+        "passwordVerifier": {
+          "type": "string",
+          "description": "Hash SHA-256 irreversível para verificação de migração de conta."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp da última atualização."
+        }
+      },
+      "required": ["uid", "authEmail"]
+    },
+    "RegionalPriceBenchmark": {
+      "title": "RegionalPriceBenchmark",
+      "description": "Referência diária de valor médio regional por categoria de serviço, sincronizada entre usuários da mesma região e atualizada diariamente.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Identificador determinístico no formato yyyyMMdd__regionKey__categoryKey."
+        },
+        "dateKey": {
+          "type": "string",
+          "description": "Data da medição diária no formato yyyy-MM-dd."
+        },
+        "displayDate": {
+          "type": "string",
+          "description": "Data formatada em dd/MM/yyyy."
+        },
+        "category": {
+          "type": "string",
+          "description": "Categoria de serviço medida."
+        },
+        "regionKey": {
+          "type": "string",
+          "description": "Chave normalizada da região (ex: sp_sao_paulo, br_nacional)."
+        },
+        "regionLabel": {
+          "type": "string",
+          "description": "Rótulo legível da cidade/estado ou região."
+        },
+        "stateCode": {
+          "type": "string",
+          "description": "Sigla da UF brasileira (opcional)."
+        },
+        "macroRegion": {
+          "type": "string",
+          "description": "Macro-região brasileira (Sudeste, Sul, Nordeste, Centro-Oeste, Norte ou Nacional)."
+        },
+        "averagePrice": {
+          "type": "number",
+          "description": "Valor médio regional medido para a categoria na data."
+        },
+        "minPrice": {
+          "type": "number",
+          "description": "Limite inferior da faixa regional."
+        },
+        "maxPrice": {
+          "type": "number",
+          "description": "Limite superior da faixa regional."
+        },
+        "regionalFactor": {
+          "type": "number",
+          "description": "Fator regional + ajuste diário aplicado."
+        },
+        "localSamplesCount": {
+          "type": "integer",
+          "description": "Quantidade de pedidos reais da categoria na região considerados no cálculo."
+        },
+        "sourceLabel": {
+          "type": "string",
+          "description": "Descrição resumida da origem da medição."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp da atualização no servidor (FieldValue.serverTimestamp())."
+        }
+      },
+      "required": ["id", "dateKey", "category", "regionKey", "regionLabel", "averagePrice", "minPrice", "maxPrice"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "UserProfile",
+      "description": "Coleção raiz de perfis de clientes, prestadores e documentos de verificação com controle de acesso individual e administrativo."
+    },
+    "/users/{userId}/documentReviews/{reviewId}": {
+      "schema": "DocumentReviewAudit",
+      "description": "Subcoleção imutável de auditoria contendo as decisões do administrador ao aprovar ou reprovar documentos do prestador."
+    },
+    "/users/{userId}/transactions/{transactionId}": {
+      "schema": "WalletTransaction",
+      "description": "Subcoleção contendo o extrato e histórico de transações da carteira digital do prestador."
+    },
+    "/users/{userId}/notifications/{notificationId}": {
+      "schema": "AppNotification",
+      "description": "Subcoleção de notificações sincronizadas em tempo real para o usuário destinatário."
+    },
+    "/adminUserCredentials/{userId}": {
+      "schema": "AdminUserCredential",
+      "description": "Coleção estritamente legível por administradores contendo credenciais gerenciadas para suporte e gestão de contas."
+    },
+    "/loginDirectory/{lookupKey}": {
+      "schema": "LoginDirectoryEntry",
+      "description": "Índice hash SHA-256 sem PII para resolução multi-aparelho de login por telefone ou e-mail."
+    },
+    "/services/{serviceId}": {
+      "schema": "ServiceRequest",
+      "description": "Coleção raiz de solicitações de serviço com isolamento: clientes só veem os seus pedidos; prestadores veem oportunidades abertas."
+    },
+    "/proposals/{proposalId}": {
+      "schema": "Proposal",
+      "description": "Coleção raiz de propostas e contrapropostas, com leitura estritamente restrita ao cliente do serviço e ao prestador proponente."
+    },
+    "/services/{serviceId}/messages/{messageId}": {
+      "schema": "ChatMessage",
+      "description": "Subcoleção de mensagens privadas do chat, liberada exclusivamente quando o cliente aceita a proposta do prestador."
+    },
+    "/reviews/{reviewId}": {
+      "schema": "ServiceReview",
+      "description": "Coleção raiz de avaliações pós-serviço de 1 a 5 estrelas (ID determinístico igual ao serviceId, evitando duplicidade)."
+    },
+    "/regionalPriceBenchmarks/{benchmarkId}": {
+      "schema": "RegionalPriceBenchmark",
+      "description": "Referência diária de preço médio regional por categoria e cidade/UF."
+    }
+  }
+}

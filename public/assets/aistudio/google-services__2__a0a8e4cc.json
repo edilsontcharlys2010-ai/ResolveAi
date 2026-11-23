@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "493707158102",
+    "project_id": "resolveai-f356e",
+    "storage_bucket": "resolveai-f356e.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:493707158102:android:92a2207c3430ed652ad1f7",
+        "android_client_info": {
+          "package_name": "com.emergent.servicomobile.p8vnrs"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "493707158102-aobdcgk9u2ejutu194bf769273vjd71g.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.emergent.servicomobile.p8vnrs",
+            "certificate_hash": "03dd5c1ee8ee66839cb955c8a376f14113ec05c7"
+          }
+        },
+        {
+          "client_id": "493707158102-vhph847kvcpdqcl9f0g6qhqaukf9ev1m.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBzG5-1NXexo2joCGR3AS8AclQklJb3s4I"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "493707158102-vhph847kvcpdqcl9f0g6qhqaukf9ev1m.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

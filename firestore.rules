@@ -1,0 +1,854 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // 1. Default Deny Global Catch-All
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // 2. Global Helper Functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && (
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid)) ||
+        ('email_verified' in request.auth.token &&
+         request.auth.token.email_verified == true &&
+         'email' in request.auth.token &&
+         request.auth.token.email in ['edilsontcharlys2010@gmail.com', 'seguranca@resolveai.com'])
+      );
+    }
+
+    function isLinkedToUserData(userData) {
+      return isSignedIn() &&
+             'linkedAuthUids' in userData &&
+             userData.linkedAuthUids is list &&
+             request.auth.uid in userData.linkedAuthUids;
+    }
+
+    function isOwnerOrLinked(userId) {
+      return isSignedIn() &&
+             userId is string &&
+             userId.size() > 0 && (
+        request.auth.uid == userId ||
+        (exists(/databases/$(database)/documents/users/$(userId)) &&
+         isLinkedToUserData(get(/databases/$(database)/documents/users/$(userId)).data))
+      );
+    }
+
+    function isServiceClient(serviceId) {
+      return isSignedIn() &&
+             serviceId is string &&
+             serviceId.size() > 0 &&
+             exists(/databases/$(database)/documents/services/$(serviceId)) &&
+             isOwnerOrLinked(get(/databases/$(database)/documents/services/$(serviceId)).data.clientId);
+    }
+
+    // 3. Entity Validation Helpers (The Anti-Update-Gap)
+    function isValidProviderDocuments(docs) {
+      return docs is map &&
+             (!('rgOrCnhNumber' in docs) || docs.rgOrCnhNumber == null || (docs.rgOrCnhNumber is string && docs.rgOrCnhNumber.size() <= 100)) &&
+             (!('rgOrCnhFileName' in docs) || docs.rgOrCnhFileName == null || (docs.rgOrCnhFileName is string && docs.rgOrCnhFileName.size() <= 300)) &&
+             (!('rgOrCnhAttachmentUri' in docs) || docs.rgOrCnhAttachmentUri == null || (docs.rgOrCnhAttachmentUri is string && docs.rgOrCnhAttachmentUri.size() <= 250000)) &&
+             (!('criminalRecordCertNumber' in docs) || docs.criminalRecordCertNumber == null || (docs.criminalRecordCertNumber is string && docs.criminalRecordCertNumber.size() <= 100)) &&
+             (!('criminalRecordFileName' in docs) || docs.criminalRecordFileName == null || (docs.criminalRecordFileName is string && docs.criminalRecordFileName.size() <= 300)) &&
+             (!('criminalRecordAttachmentUri' in docs) || docs.criminalRecordAttachmentUri == null || (docs.criminalRecordAttachmentUri is string && docs.criminalRecordAttachmentUri.size() <= 250000)) &&
+             (!('selfieFileName' in docs) || docs.selfieFileName == null || (docs.selfieFileName is string && docs.selfieFileName.size() <= 300)) &&
+             (!('selfieAttachmentUri' in docs) || docs.selfieAttachmentUri == null || (docs.selfieAttachmentUri is string && docs.selfieAttachmentUri.size() <= 250000)) &&
+             (!('submittedAt' in docs) || docs.submittedAt == null || docs.submittedAt is int || docs.submittedAt is timestamp) &&
+             (!('reviewedAt' in docs) || docs.reviewedAt == null || docs.reviewedAt is int || docs.reviewedAt is timestamp) &&
+             (!('reviewedBy' in docs) || docs.reviewedBy == null || (docs.reviewedBy is string && docs.reviewedBy.size() <= 128)) &&
+             (!('reviewedByEmail' in docs) || docs.reviewedByEmail == null || (docs.reviewedByEmail is string && docs.reviewedByEmail.size() <= 150)) &&
+             (!('rejectionReason' in docs) || docs.rejectionReason == null || (docs.rejectionReason is string && docs.rejectionReason.size() <= 500)) &&
+             (!('idDocVerified' in docs) || docs.idDocVerified is bool) &&
+             (!('criminalRecordVerified' in docs) || docs.criminalRecordVerified is bool) &&
+             (!('selfieVerified' in docs) || docs.selfieVerified is bool);
+    }
+
+    function isValidUserProfile(data) {
+      return data.userId is string && data.userId.size() <= 128 &&
+             data.name is string && data.name.size() >= 2 && data.name.size() <= 100 &&
+             (!('email' in data) || data.email == null || (data.email is string && data.email.size() <= 150)) &&
+             data.phone is string && data.phone.size() >= 8 && data.phone.size() <= 30 &&
+             data.role in ['CLIENTE', 'PRESTADOR', 'ADMIN'] &&
+             (!('category' in data) || data.category == null || (data.category is string && data.category.size() <= 100)) &&
+             (!('bio' in data) || data.bio == null || (data.bio is string && data.bio.size() <= 500)) &&
+             (!('city' in data) || data.city == null || (data.city is string && data.city.size() <= 100)) &&
+             (!('document' in data) || data.document == null || (data.document is string && data.document.size() <= 50)) &&
+             (!('rating' in data) || (data.rating is number && data.rating >= 1 && data.rating <= 5)) &&
+             (!('ratingCount' in data) || (data.ratingCount is int && data.ratingCount >= 0)) &&
+             (!('completedJobs' in data) || data.completedJobs is int) &&
+             (!('walletBalance' in data) || data.walletBalance is number) &&
+             (!('isPhoneVerified' in data) || data.isPhoneVerified is bool) &&
+             (!('verificationStatus' in data) || data.verificationStatus in ['PENDENTE_ANALISE', 'APROVADO', 'REJEITADO', 'REPROVADO']) &&
+             (!('documents' in data) || data.documents == null || isValidProviderDocuments(data.documents)) &&
+             (!('avatarColorHex' in data) || data.avatarColorHex is int) &&
+             (!('photoUrl' in data) || data.photoUrl == null || (data.photoUrl is string && data.photoUrl.size() <= 250000)) &&
+             (!('portfolioPhotos' in data) || (data.portfolioPhotos is list && data.portfolioPhotos.size() <= 6)) &&
+             (!('declinedServiceIds' in data) || (data.declinedServiceIds is list && data.declinedServiceIds.size() <= 500)) &&
+             (!('linkedAuthUids' in data) || (data.linkedAuthUids is list && data.linkedAuthUids.size() <= 20));
+    }
+
+    function isValidDocumentReview(data) {
+      return data.providerId is string && data.providerId.size() <= 128 &&
+             (!('providerName' in data) || data.providerName == null || (data.providerName is string && data.providerName.size() <= 100)) &&
+             data.decision in ['APROVADO', 'REJEITADO', 'REPROVADO'] &&
+             (!('reason' in data) || data.reason == null || (data.reason is string && data.reason.size() <= 500)) &&
+             data.adminUid is string && data.adminUid.size() <= 128 &&
+             (!('adminEmail' in data) || data.adminEmail == null || (data.adminEmail is string && data.adminEmail.size() <= 150)) &&
+             (!('idDocVerified' in data) || data.idDocVerified is bool) &&
+             (!('criminalRecordVerified' in data) || data.criminalRecordVerified is bool) &&
+             (!('selfieVerified' in data) || data.selfieVerified is bool);
+    }
+
+    function isValidTransaction(data) {
+      return data.providerId is string && data.providerId.size() <= 128 &&
+             data.type in ['DEBITO_TAXA_10', 'RECARGA_PIX', 'RECARGA_CARTAO', 'REEMBOLSO', 'CREDITO_ADMIN'] &&
+             data.amount is number && data.amount > 0 &&
+             data.balanceAfter is number &&
+             (!('serviceId' in data) || data.serviceId == null || (data.serviceId is string && data.serviceId.size() <= 128)) &&
+             (!('serviceTitle' in data) || data.serviceTitle == null || (data.serviceTitle is string && data.serviceTitle.size() <= 200)) &&
+             (!('description' in data) || (data.description is string && data.description.size() <= 300));
+    }
+
+    function isValidServiceRequest(data) {
+      return data.clientId is string && data.clientId.size() <= 128 &&
+             data.clientName is string && data.clientName.size() >= 2 && data.clientName.size() <= 100 &&
+             data.title is string && data.title.size() >= 3 && data.title.size() <= 200 &&
+             data.category is string && data.category.size() <= 100 &&
+             (!('description' in data) || (data.description is string && data.description.size() <= 2000)) &&
+             (!('location' in data) || (data.location is string && data.location.size() <= 300)) &&
+             (!('latitude' in data) || data.latitude is number) &&
+             (!('longitude' in data) || data.longitude is number) &&
+             data.proposedBudget is number && data.proposedBudget >= 0 &&
+             (!('urgency' in data) || (data.urgency is string && data.urgency.size() <= 50)) &&
+             data.status in ['ABERTO', 'EM_NEGOCIACAO', 'ACEITO', 'EM_EXECUCAO', 'EM_ANDAMENTO', 'CONCLUIDO', 'CANCELADO'] &&
+             (!('assignedProviderId' in data) || data.assignedProviderId == null || (data.assignedProviderId is string && data.assignedProviderId.size() <= 128)) &&
+             (!('assignedProviderName' in data) || data.assignedProviderName == null || (data.assignedProviderName is string && data.assignedProviderName.size() <= 100)) &&
+             (!('acceptedProviderId' in data) || data.acceptedProviderId == null || (data.acceptedProviderId is string && data.acceptedProviderId.size() <= 128)) &&
+             (!('acceptedProviderName' in data) || data.acceptedProviderName == null || (data.acceptedProviderName is string && data.acceptedProviderName.size() <= 100)) &&
+             (!('acceptedProviderRating' in data) || data.acceptedProviderRating == null || data.acceptedProviderRating is number) &&
+             (!('acceptedProviderAvatarColorHex' in data) || data.acceptedProviderAvatarColorHex == null || data.acceptedProviderAvatarColorHex is int) &&
+             (!('acceptedProviderPhotoUrl' in data) || data.acceptedProviderPhotoUrl == null || (data.acceptedProviderPhotoUrl is string && data.acceptedProviderPhotoUrl.size() <= 250000)) &&
+             (!('clientRating' in data) || data.clientRating is number) &&
+             (!('clientAvatarColorHex' in data) || data.clientAvatarColorHex is int) &&
+             (!('clientPhotoUrl' in data) || data.clientPhotoUrl == null || (data.clientPhotoUrl is string && data.clientPhotoUrl.size() <= 250000)) &&
+             (!('ratingGiven' in data) || data.ratingGiven == null || (data.ratingGiven is number && data.ratingGiven >= 1 && data.ratingGiven <= 5)) &&
+             (!('reviewComment' in data) || data.reviewComment == null || (data.reviewComment is string && data.reviewComment.size() <= 1000)) &&
+             (!('reviewTags' in data) || (data.reviewTags is list && data.reviewTags.size() <= 10 && (data.reviewTags.size() == 0 || data.reviewTags[0] is string))) &&
+             (!('reviewedAt' in data) || data.reviewedAt == null || data.reviewedAt is int || data.reviewedAt is number || data.reviewedAt is timestamp) &&
+             (!('finalAgreedPrice' in data) || data.finalAgreedPrice == null || data.finalAgreedPrice is number) &&
+             (!('platformFee' in data) || data.platformFee == null || data.platformFee is number) &&
+             (!('cancellationReason' in data) || data.cancellationReason == null || (data.cancellationReason is string && data.cancellationReason.size() <= 500)) &&
+             (!('cancelledByRole' in data) || data.cancelledByRole == null || data.cancelledByRole in ['CLIENTE', 'PRESTADOR', 'ADMIN']) &&
+             (!('cancelledByName' in data) || data.cancelledByName == null || (data.cancelledByName is string && data.cancelledByName.size() <= 100)) &&
+             (!('cancelledAt' in data) || data.cancelledAt == null || data.cancelledAt is int || data.cancelledAt is number) &&
+             (!('attachmentPhotoUri' in data) || data.attachmentPhotoUri == null || (data.attachmentPhotoUri is string && data.attachmentPhotoUri.size() <= 250000)) &&
+             (!('attachmentPhotoName' in data) || data.attachmentPhotoName == null || (data.attachmentPhotoName is string && data.attachmentPhotoName.size() <= 300)) &&
+             (!('attachmentVideoUri' in data) || data.attachmentVideoUri == null || (data.attachmentVideoUri is string && data.attachmentVideoUri.size() <= 2000)) &&
+             (!('attachmentVideoName' in data) || data.attachmentVideoName == null || (data.attachmentVideoName is string && data.attachmentVideoName.size() <= 300)) &&
+             (!('attachmentVideoThumbnailUri' in data) || data.attachmentVideoThumbnailUri == null || (data.attachmentVideoThumbnailUri is string && data.attachmentVideoThumbnailUri.size() <= 250000)) &&
+             (!('attachmentVideoDurationMs' in data) || data.attachmentVideoDurationMs == null || data.attachmentVideoDurationMs is int || data.attachmentVideoDurationMs is number) &&
+             (!('completionPhotoUri' in data) || data.completionPhotoUri == null || (data.completionPhotoUri is string && data.completionPhotoUri.size() <= 250000)) &&
+             (!('completionPhotoName' in data) || data.completionPhotoName == null || (data.completionPhotoName is string && data.completionPhotoName.size() <= 300)) &&
+             (!('completionVideoUri' in data) || data.completionVideoUri == null || (data.completionVideoUri is string && data.completionVideoUri.size() <= 2000)) &&
+             (!('completionVideoName' in data) || data.completionVideoName == null || (data.completionVideoName is string && data.completionVideoName.size() <= 300)) &&
+             (!('completionVideoThumbnailUri' in data) || data.completionVideoThumbnailUri == null || (data.completionVideoThumbnailUri is string && data.completionVideoThumbnailUri.size() <= 250000)) &&
+             (!('completionVideoDurationMs' in data) || data.completionVideoDurationMs == null || data.completionVideoDurationMs is int || data.completionVideoDurationMs is number) &&
+             (!('completionNotes' in data) || data.completionNotes == null || (data.completionNotes is string && data.completionNotes.size() <= 500)) &&
+             (!('completedAt' in data) || data.completedAt == null || data.completedAt is int || data.completedAt is number) &&
+             (!('cancellationRefundStatus' in data) || data.cancellationRefundStatus == null || data.cancellationRefundStatus in ['NENHUM', 'PENDENTE_ANALISE_ADMIN', 'ESTORNADO_AUTOMATICO', 'ESTORNADO_ADMIN', 'NEGADO_ADMIN']) &&
+             (!('cancellationRefundReviewedBy' in data) || data.cancellationRefundReviewedBy == null || (data.cancellationRefundReviewedBy is string && data.cancellationRefundReviewedBy.size() <= 150)) &&
+             (!('cancellationRefundReviewedAt' in data) || data.cancellationRefundReviewedAt == null || data.cancellationRefundReviewedAt is int || data.cancellationRefundReviewedAt is number) &&
+             (!('cancellationRefundNote' in data) || data.cancellationRefundNote == null || (data.cancellationRefundNote is string && data.cancellationRefundNote.size() <= 500)) &&
+             (!('locationTrackingActive' in data) || data.locationTrackingActive is bool) &&
+             (!('locationPointsCount' in data) || data.locationPointsCount is int || data.locationPointsCount is number) &&
+             (!('clientCompletionPhotos' in data) || (data.clientCompletionPhotos is list && data.clientCompletionPhotos.size() <= 6));
+    }
+
+    function isValidProposal(data) {
+      return data.serviceId is string && data.serviceId.size() <= 128 &&
+             data.clientId is string && data.clientId.size() <= 128 &&
+             data.providerId is string && data.providerId.size() <= 128 &&
+             (!('providerName' in data) || (data.providerName is string && data.providerName.size() <= 100)) &&
+             (!('providerRating' in data) || data.providerRating is number) &&
+             (!('providerCategory' in data) || (data.providerCategory is string && data.providerCategory.size() <= 300)) &&
+             (!('providerAvatarColorHex' in data) || data.providerAvatarColorHex is int) &&
+             (!('providerPhotoUrl' in data) || data.providerPhotoUrl == null || (data.providerPhotoUrl is string && data.providerPhotoUrl.size() <= 250000)) &&
+             data.proposedPrice is number && data.proposedPrice >= 0 &&
+             (!('estimatedDays' in data) || data.estimatedDays is int) &&
+             (!('description' in data) || (data.description is string && data.description.size() <= 2000)) &&
+             data.status in ['ENVIADA', 'CONTRAPROPOSTA_CLIENTE', 'CONTRAPROPOSTA_PRESTADOR', 'ACEITA', 'RECUSADA'] &&
+             (!('isDirectAcceptance' in data) || data.isDirectAcceptance is bool) &&
+             (!('counterOffers' in data) || (data.counterOffers is list && data.counterOffers.size() <= 50));
+    }
+
+    function isValidChatMessage(data) {
+      return data.serviceId is string && data.serviceId.size() <= 128 &&
+             data.senderId is string && data.senderId.size() <= 128 &&
+             data.senderName is string && data.senderName.size() <= 100 &&
+             data.senderRole in ['CLIENTE', 'PRESTADOR', 'SISTEMA', 'ADMIN'] &&
+             data.content is string && data.content.size() > 0 && data.content.size() <= 2000 &&
+             (!('isSystemNotice' in data) || data.isSystemNotice is bool);
+    }
+
+    function isValidLocationPoint(data) {
+      return data.serviceId is string && data.serviceId.size() <= 128 &&
+             data.providerId is string && data.providerId.size() <= 128 &&
+             data.latitude is number && data.latitude >= -90 && data.latitude <= 90 &&
+             data.longitude is number && data.longitude >= -180 && data.longitude <= 180 &&
+             (!('accuracyMeters' in data) || data.accuracyMeters is number) &&
+             (!('speedMps' in data) || data.speedMps is number) &&
+             (!('serviceStatus' in data) || data.serviceStatus in ['ACEITO', 'EM_EXECUCAO', 'CONCLUIDO', 'CANCELADO']) &&
+             (!('source' in data) || (data.source is string && data.source.size() <= 50));
+    }
+
+    function isValidAppSuggestion(data) {
+      return data.userId is string && data.userId.size() <= 128 &&
+             data.userName is string && data.userName.size() >= 2 && data.userName.size() <= 100 &&
+             data.userRole in ['CLIENTE', 'PRESTADOR', 'ADMIN'] &&
+             data.category is string && data.category.size() <= 80 &&
+             data.title is string && data.title.size() >= 3 && data.title.size() <= 150 &&
+             data.description is string && data.description.size() >= 5 && data.description.size() <= 1500 &&
+             data.status in ['ENVIADA', 'EM_ANALISE', 'IMPLEMENTADA', 'ARQUIVADA'] &&
+             (!('adminReply' in data) || data.adminReply == null || (data.adminReply is string && data.adminReply.size() <= 500));
+    }
+
+    function isValidServiceCategory(data) {
+      return data.id is string && data.id.size() > 0 && data.id.size() <= 128 &&
+             data.name is string && data.name.size() >= 2 && data.name.size() <= 80 &&
+             (!('specialtyLabel' in data) || data.specialtyLabel == null || (data.specialtyLabel is string && data.specialtyLabel.size() <= 120)) &&
+             (!('isActive' in data) || data.isActive is bool) &&
+             (!('orderIndex' in data) || data.orderIndex is int || data.orderIndex is number) &&
+             (!('updatedAt' in data) || data.updatedAt is int || data.updatedAt is number || data.updatedAt is timestamp);
+    }
+
+    function isValidServiceReview(data) {
+      return isValidId(data.serviceId) &&
+             isValidId(data.clientId) &&
+             data.clientName is string && data.clientName.size() >= 2 && data.clientName.size() <= 100 &&
+             (!('clientPhotoUrl' in data) || data.clientPhotoUrl == null || (data.clientPhotoUrl is string && data.clientPhotoUrl.size() <= 250000)) &&
+             isValidId(data.providerId) &&
+             (!('providerName' in data) || (data.providerName is string && data.providerName.size() <= 100)) &&
+             (!('serviceTitle' in data) || (data.serviceTitle is string && data.serviceTitle.size() <= 200)) &&
+             (!('serviceCategory' in data) || (data.serviceCategory is string && data.serviceCategory.size() <= 100)) &&
+             data.rating is number && data.rating >= 1 && data.rating <= 5 &&
+             (!('comment' in data) || data.comment == null || (data.comment is string && data.comment.size() <= 1000)) &&
+             (!('complimentTags' in data) || (data.complimentTags is list && data.complimentTags.size() <= 10 && (data.complimentTags.size() == 0 || data.complimentTags[0] is string))) &&
+             (!('providerReply' in data) || data.providerReply == null || (data.providerReply is string && data.providerReply.size() <= 500)) &&
+             (!('repliedAt' in data) || data.repliedAt == null || data.repliedAt is timestamp) &&
+             data.isPublic == true;
+    }
+
+    function isValidAppConfig(data) {
+      return (!('appDisplayName' in data) || (data.appDisplayName is string && data.appDisplayName.size() >= 2 && data.appDisplayName.size() <= 80)) &&
+             (!('globalBannerMessage' in data) || data.globalBannerMessage == null || (data.globalBannerMessage is string && data.globalBannerMessage.size() <= 400)) &&
+             (!('supportWhatsappNumberE164' in data) || (data.supportWhatsappNumberE164 is string && data.supportWhatsappNumberE164.size() >= 8 && data.supportWhatsappNumberE164.size() <= 25)) &&
+             (!('supportWhatsappDisplay' in data) || (data.supportWhatsappDisplay is string && data.supportWhatsappDisplay.size() >= 8 && data.supportWhatsappDisplay.size() <= 40)) &&
+             (!('defaultServiceUrgency' in data) || data.defaultServiceUrgency in ['Baixa', 'Média', 'Alta', 'Urgente']) &&
+             (!('tips' in data) || (data.tips is list && data.tips.size() <= 50)) &&
+             (!('updatedAt' in data) || data.updatedAt is int || data.updatedAt is number || data.updatedAt is timestamp);
+    }
+
+    function isValidNotification(data) {
+      return data.recipientId is string && data.recipientId.size() > 0 && data.recipientId.size() <= 128 &&
+             data.title is string && data.title.size() > 0 && data.title.size() <= 200 &&
+             data.message is string && data.message.size() > 0 && data.message.size() <= 1000 &&
+             data.type in ['NOVO_SERVICO', 'PROPOSTA_RECEBIDA', 'PROPOSTA_ACEITA', 'NOVA_MENSAGEM', 'STATUS_ATUALIZADO', 'AVALIACAO_RECEBIDA', 'DOCUMENTO_APROVADO', 'DOCUMENTO_REJEITADO', 'PAGAMENTO_PIX_CONFIRMADO'] &&
+             (!('serviceId' in data) || data.serviceId == null || (data.serviceId is string && data.serviceId.size() <= 128)) &&
+             (!('isRead' in data) || data.isRead is bool) &&
+             (!('senderId' in data) || data.senderId == null || (data.senderId is string && data.senderId.size() <= 128));
+    }
+
+    function isValidAdminUserCredential(data) {
+      return data.userId is string && data.userId.size() > 0 && data.userId.size() <= 128 &&
+             (!('passwordHash' in data) || data.passwordHash == null || (data.passwordHash is string && data.passwordHash.size() >= 16 && data.passwordHash.size() <= 128)) &&
+             (!('displayPassword' in data) || data.displayPassword == null || (data.displayPassword is string && data.displayPassword.size() >= 6 && data.displayPassword.size() <= 128)) &&
+             (!('updatedBy' in data) || data.updatedBy == null || (data.updatedBy is string && data.updatedBy.size() <= 128)) &&
+             (!('updatedAt' in data) || data.updatedAt == null || data.updatedAt is int || data.updatedAt is number || data.updatedAt is timestamp);
+    }
+
+    function isValidLoginLookupKey(lookupKey) {
+      return lookupKey is string &&
+             (lookupKey.matches('^email_[a-f0-9]{64}$') || lookupKey.matches('^phone_[a-f0-9]{64}$'));
+    }
+
+    function isValidLoginDirectoryEntry(data) {
+      return data.keys().hasOnly(['uid', 'authEmail', 'aliasAuthEmail', 'passwordVerifier', 'updatedAt']) &&
+             data.uid is string && data.uid.size() > 0 && data.uid.size() <= 128 &&
+             data.authEmail is string && data.authEmail.size() >= 5 && data.authEmail.size() <= 160 &&
+             (!('aliasAuthEmail' in data) || data.aliasAuthEmail == null || (data.aliasAuthEmail is string && data.aliasAuthEmail.size() >= 5 && data.aliasAuthEmail.size() <= 160)) &&
+             (!('passwordVerifier' in data) || data.passwordVerifier == null || (data.passwordVerifier is string && data.passwordVerifier.size() >= 32 && data.passwordVerifier.size() <= 128)) &&
+             (!('updatedAt' in data) || data.updatedAt == null || data.updatedAt is int || data.updatedAt is number || data.updatedAt is timestamp);
+    }
+
+    function isValidRegionalPriceBenchmark(data) {
+      return data.keys().hasAll(['id', 'dateKey', 'category', 'regionKey', 'regionLabel', 'averagePrice', 'minPrice', 'maxPrice']) &&
+             data.keys().hasOnly([
+               'id', 'dateKey', 'displayDate', 'category', 'regionKey', 'regionLabel',
+               'stateCode', 'macroRegion', 'averagePrice', 'minPrice', 'maxPrice',
+               'regionalFactor', 'localSamplesCount', 'sourceLabel', 'updatedAt'
+             ]) &&
+             isValidId(data.id) &&
+             data.dateKey is string && data.dateKey.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$') &&
+             (!('displayDate' in data) || (data.displayDate is string && data.displayDate.size() <= 20)) &&
+             data.category is string && data.category.size() >= 2 && data.category.size() <= 100 &&
+             data.regionKey is string && data.regionKey.size() >= 2 && data.regionKey.size() <= 80 &&
+             data.regionLabel is string && data.regionLabel.size() >= 2 && data.regionLabel.size() <= 120 &&
+             (!('stateCode' in data) || (data.stateCode is string && data.stateCode.size() <= 4)) &&
+             (!('macroRegion' in data) || (data.macroRegion is string && data.macroRegion.size() <= 40)) &&
+             data.averagePrice is number && data.averagePrice >= 20 && data.averagePrice <= 50000 &&
+             data.minPrice is number && data.minPrice >= 10 && data.minPrice <= data.averagePrice &&
+             data.maxPrice is number && data.maxPrice >= data.averagePrice && data.maxPrice <= 100000 &&
+             (!('regionalFactor' in data) || (data.regionalFactor is number && data.regionalFactor >= 0.5 && data.regionalFactor <= 3.0)) &&
+             (!('localSamplesCount' in data) || ((data.localSamplesCount is int || data.localSamplesCount is number) && data.localSamplesCount >= 0 && data.localSamplesCount <= 1000000)) &&
+             (!('sourceLabel' in data) || (data.sourceLabel is string && data.sourceLabel.size() <= 200)) &&
+             (!('updatedAt' in data) || data.updatedAt == null || data.updatedAt is int || data.updatedAt is number || (data.updatedAt is timestamp && data.updatedAt <= request.time));
+    }
+
+    // 3.1 Coleção de Administradores (/admins/{adminId}) - Leitura restrita ao próprio UID
+    match /admins/{adminId} {
+      allow get: if isSignedIn() && isValidId(adminId) && request.auth.uid == adminId;
+      allow list, write: if false;
+    }
+
+    // 4. Coleção de Usuários (/users/{userId})
+    match /users/{userId} {
+      allow get: if isSignedIn() && isValidId(userId) && (
+        request.auth.uid == userId ||
+        isLinkedToUserData(resource.data) ||
+        resource.data.role == 'PRESTADOR' ||
+        isAdmin()
+      );
+
+      allow list: if isSignedIn() && (
+        resource.data.userId == request.auth.uid ||
+        isLinkedToUserData(resource.data) ||
+        resource.data.role == 'PRESTADOR' ||
+        isAdmin()
+      );
+
+      allow create: if isSignedIn() && isValidId(userId) &&
+                       (
+                         (request.auth.uid == userId &&
+                          incoming().userId == request.auth.uid &&
+                          incoming().role in ['CLIENTE', 'PRESTADOR'] &&
+                          (!('linkedAuthUids' in incoming()) || incoming().linkedAuthUids.size() == 0) &&
+                          (incoming().role != 'PRESTADOR' || !('verificationStatus' in incoming()) || incoming().verificationStatus == 'PENDENTE_ANALISE')) ||
+                         isAdmin()
+                       ) &&
+                       incoming().keys().hasAll(['userId', 'name', 'phone', 'role', 'createdAt']) &&
+                       incoming().createdAt is timestamp &&
+                       incoming().createdAt <= request.time &&
+                       isValidUserProfile(incoming());
+
+      allow update: if isSignedIn() && isValidId(userId) &&
+                       (request.auth.uid == userId || isLinkedToUserData(existing()) || isAdmin()) &&
+                       incoming().userId == existing().userId &&
+                       incoming().createdAt == existing().createdAt &&
+                       isValidUserProfile(incoming()) &&
+                       (
+                         isAdmin() ||
+                         (
+                           incoming().role == existing().role &&
+                           (!('verificationStatus' in incoming()) || incoming().verificationStatus == existing().get('verificationStatus', 'PENDENTE_ANALISE') || incoming().verificationStatus == 'PENDENTE_ANALISE') &&
+                           incoming().diff(existing()).affectedKeys().hasOnly([
+                             'name', 'email', 'phone', 'category', 'bio', 'city', 'document', 'avatarColorHex',
+                             'photoUrl', 'rating', 'ratingCount', 'walletBalance', 'completedJobs', 'documents', 'portfolioPhotos',
+                             'verificationStatus', 'declinedServiceIds', 'updatedAt'
+                           ])
+                         )
+                       );
+
+      allow delete: if isAdmin();
+
+      // 4.0 Subcoleção de Auditoria da Análise de Documentos (/users/{userId}/documentReviews/{reviewId})
+      match /documentReviews/{reviewId} {
+        allow get: if isSignedIn() && isValidId(reviewId) && (
+          isOwnerOrLinked(userId) ||
+          isAdmin()
+        );
+
+        allow list: if isSignedIn() && (
+          isOwnerOrLinked(userId) ||
+          isAdmin()
+        );
+
+        allow create: if isSignedIn() && isValidId(reviewId) &&
+                         isAdmin() &&
+                         incoming().providerId == userId &&
+                         incoming().adminUid == request.auth.uid &&
+                         incoming().keys().hasAll(['providerId', 'decision', 'adminUid', 'createdAt']) &&
+                         incoming().createdAt is timestamp &&
+                         incoming().createdAt <= request.time &&
+                         isValidDocumentReview(incoming());
+
+        allow update, delete: if false; // Histórico de análise documental é estritamente imutável
+      }
+
+      // 4.1 Subcoleção de Transações da Carteira Digital (/users/{userId}/transactions/{transactionId})
+      match /transactions/{transactionId} {
+        allow get: if isSignedIn() && isValidId(transactionId) && (
+          isOwnerOrLinked(userId) ||
+          isAdmin()
+        );
+
+        allow list: if isSignedIn() && (
+          isOwnerOrLinked(userId) ||
+          isAdmin()
+        );
+
+        allow create: if isSignedIn() && isValidId(transactionId) &&
+                         (isOwnerOrLinked(userId) || request.auth.uid == incoming().providerId || isAdmin()) &&
+                         incoming().providerId == userId &&
+                         incoming().keys().hasAll(['providerId', 'type', 'amount', 'balanceAfter', 'createdAt']) &&
+                         incoming().createdAt is timestamp &&
+                         incoming().createdAt <= request.time &&
+                         isValidTransaction(incoming()) &&
+                         (incoming().type != 'CREDITO_ADMIN' || isAdmin());
+
+        allow update, delete: if false; // Extrato financeiro é estritamente imutável para auditoria
+      }
+
+      // 4.2 Subcoleção de Cobranças Pix em Tempo Real (/users/{userId}/pixCharges/{chargeId})
+      match /pixCharges/{chargeId} {
+        allow get: if isSignedIn() && isValidId(chargeId) && (
+          isOwnerOrLinked(userId) ||
+          isAdmin()
+        );
+
+        allow list: if isSignedIn() && (
+          isOwnerOrLinked(userId) ||
+          isAdmin()
+        );
+
+        allow create: if isSignedIn() && isValidId(chargeId) &&
+                         (isOwnerOrLinked(userId) || isAdmin()) &&
+                         incoming().providerId == userId &&
+                         incoming().txId == chargeId &&
+                         incoming().status == 'AGUARDANDO_PAGAMENTO' &&
+                         incoming().amount is number && incoming().amount > 0;
+
+        allow update: if isSignedIn() && isValidId(chargeId) &&
+                         (isOwnerOrLinked(userId) || isAdmin()) &&
+                         incoming().providerId == existing().providerId &&
+                         incoming().txId == existing().txId &&
+                         incoming().amount == existing().amount &&
+                         incoming().status in ['AGUARDANDO_PAGAMENTO', 'PAGO', 'PAID', 'CONFIRMED', 'EXPIRADO', 'CANCELADO_OU_REJEITADO'];
+
+        allow delete: if isAdmin();
+      }
+
+      // 4.3 Subcoleção de Notificações em Tempo Real (/users/{userId}/notifications/{notificationId})
+      match /notifications/{notificationId} {
+        allow get: if isSignedIn() && isValidId(notificationId) && (
+          isOwnerOrLinked(userId) ||
+          isAdmin()
+        );
+
+        allow list: if isSignedIn() && (
+          isOwnerOrLinked(userId) ||
+          isAdmin()
+        );
+
+        allow create: if isSignedIn() && isValidId(notificationId) &&
+                         incoming().recipientId == userId &&
+                         incoming().keys().hasAll(['recipientId', 'title', 'message', 'type', 'createdAt']) &&
+                         incoming().createdAt is timestamp &&
+                         incoming().createdAt <= request.time &&
+                         isValidNotification(incoming());
+
+        allow update: if isSignedIn() && isValidId(notificationId) &&
+                         (isOwnerOrLinked(userId) || isAdmin()) &&
+                         incoming().recipientId == existing().recipientId &&
+                         incoming().createdAt == existing().createdAt &&
+                         incoming().diff(existing()).affectedKeys().hasOnly(['isRead', 'updatedAt']) &&
+                         incoming().isRead is bool;
+
+        allow delete: if isSignedIn() && isValidId(notificationId) && (
+          isOwnerOrLinked(userId) ||
+          isAdmin()
+        );
+      }
+    }
+
+    // 4.4 Coleção Exclusiva de Credenciais Gerenciadas pelo Administrador (/adminUserCredentials/{userId})
+    match /adminUserCredentials/{userId} {
+      allow get: if isAdmin() && isValidId(userId);
+      allow list: if isAdmin();
+      allow create, update: if isSignedIn() && isValidId(userId) &&
+                               (isOwnerOrLinked(userId) || isAdmin()) &&
+                               incoming().userId == userId &&
+                               isValidAdminUserCredential(incoming());
+      allow delete: if isAdmin() && isValidId(userId);
+    }
+
+    // 4.5 Índice Hash SHA-256 sem PII para Login Multi-Aparelho (/loginDirectory/{lookupKey})
+    match /loginDirectory/{lookupKey} {
+      allow get: if isValidLoginLookupKey(lookupKey);
+      allow list: if false;
+      allow create: if isSignedIn() && isValidLoginLookupKey(lookupKey) &&
+                       isValidLoginDirectoryEntry(incoming()) &&
+                       (isOwnerOrLinked(incoming().uid) || isAdmin());
+      allow update: if isSignedIn() && isValidLoginLookupKey(lookupKey) &&
+                       isValidLoginDirectoryEntry(incoming()) &&
+                       ((isOwnerOrLinked(existing().uid) && isOwnerOrLinked(incoming().uid)) || isAdmin());
+      allow delete: if isSignedIn() && isValidLoginLookupKey(lookupKey) &&
+                       (isOwnerOrLinked(existing().uid) || isAdmin());
+    }
+
+    // 5. Coleção de Solicitações de Serviço (/services/{serviceId})
+    match /services/{serviceId} {
+      allow get: if isSignedIn() && isValidId(serviceId) && (
+        resource.data.clientId == request.auth.uid ||
+        isOwnerOrLinked(resource.data.clientId) ||
+        resource.data.assignedProviderId == request.auth.uid ||
+        ('assignedProviderId' in resource.data && isOwnerOrLinked(resource.data.assignedProviderId)) ||
+        resource.data.acceptedProviderId == request.auth.uid ||
+        ('acceptedProviderId' in resource.data && isOwnerOrLinked(resource.data.acceptedProviderId)) ||
+        (resource.data.status in ['ABERTO', 'EM_NEGOCIACAO']) ||
+        isAdmin()
+      );
+
+      allow list: if isSignedIn() && (
+        resource.data.clientId == request.auth.uid ||
+        isOwnerOrLinked(resource.data.clientId) ||
+        (resource.data.status in ['ABERTO', 'EM_NEGOCIACAO']) ||
+        resource.data.assignedProviderId == request.auth.uid ||
+        ('assignedProviderId' in resource.data && isOwnerOrLinked(resource.data.assignedProviderId)) ||
+        resource.data.acceptedProviderId == request.auth.uid ||
+        ('acceptedProviderId' in resource.data && isOwnerOrLinked(resource.data.acceptedProviderId)) ||
+        isAdmin()
+      );
+
+      allow create: if isSignedIn() && isValidId(serviceId) &&
+                       (incoming().clientId == request.auth.uid || isOwnerOrLinked(incoming().clientId)) &&
+                       incoming().keys().hasAll(['clientId', 'clientName', 'title', 'category', 'proposedBudget', 'status', 'createdAt']) &&
+                       incoming().createdAt is timestamp &&
+                       incoming().createdAt <= request.time &&
+                       isValidServiceRequest(incoming());
+
+      allow update: if isSignedIn() && isValidId(serviceId) &&
+                       incoming().clientId == existing().clientId &&
+                       incoming().createdAt == existing().createdAt &&
+                       (
+                         ((existing().clientId == request.auth.uid || isOwnerOrLinked(existing().clientId)) &&
+                           (!('ratingGiven' in incoming().diff(existing()).affectedKeys()) ||
+                             (existing().status == 'CONCLUIDO' && existing().get('ratingGiven', null) == null)) &&
+                           incoming().diff(existing()).affectedKeys().hasOnly([
+                           'title', 'category', 'description', 'location', 'latitude', 'longitude',
+                           'proposedBudget', 'urgency', 'status', 'assignedProviderId', 'assignedProviderName',
+                           'acceptedProviderId', 'acceptedProviderName', 'acceptedProviderRating',
+                           'acceptedProviderAvatarColorHex', 'acceptedProviderPhotoUrl',
+                           'clientRating', 'clientAvatarColorHex', 'clientPhotoUrl',
+                           'ratingGiven', 'reviewComment', 'reviewTags', 'reviewedAt',
+                           'finalAgreedPrice', 'platformFee',
+                           'cancellationReason', 'cancelledByRole', 'cancelledByName', 'cancelledAt',
+                           'cancellationRefundStatus', 'locationTrackingActive',
+                           'attachmentPhotoUri', 'attachmentPhotoName',
+                           'attachmentVideoUri', 'attachmentVideoName', 'attachmentVideoThumbnailUri', 'attachmentVideoDurationMs',
+                           'clientCompletionPhotos', 'completedAt',
+                           'updatedAt'
+                         ])) ||
+                         (incoming().diff(existing()).affectedKeys().hasOnly([
+                           'status', 'assignedProviderId', 'assignedProviderName',
+                           'acceptedProviderId', 'acceptedProviderName', 'acceptedProviderRating',
+                           'acceptedProviderAvatarColorHex', 'acceptedProviderPhotoUrl',
+                           'finalAgreedPrice', 'platformFee',
+                           'cancellationReason', 'cancelledByRole', 'cancelledByName', 'cancelledAt',
+                           'cancellationRefundStatus', 'locationTrackingActive', 'locationPointsCount',
+                           'completionPhotoUri', 'completionPhotoName',
+                           'completionVideoUri', 'completionVideoName', 'completionVideoThumbnailUri', 'completionVideoDurationMs',
+                           'completionNotes', 'completedAt', 'updatedAt'
+                         ])) ||
+                         isAdmin()
+                       ) &&
+                       isValidServiceRequest(incoming());
+
+      allow delete: if isSignedIn() && isValidId(serviceId) && (
+        existing().clientId == request.auth.uid ||
+        isOwnerOrLinked(existing().clientId) ||
+        isAdmin()
+      );
+
+      // 6. Subcoleção de Mensagens Privadas (/services/{serviceId}/messages/{messageId})
+      match /messages/{messageId} {
+        function isChatParticipantForService(srv) {
+          return (srv.status in ['ACEITO', 'EM_EXECUCAO', 'EM_ANDAMENTO', 'CONCLUIDO']) && (
+            srv.clientId == request.auth.uid ||
+            isOwnerOrLinked(srv.clientId) ||
+            ('assignedProviderId' in srv && (srv.assignedProviderId == request.auth.uid || isOwnerOrLinked(srv.assignedProviderId))) ||
+            ('acceptedProviderId' in srv && (srv.acceptedProviderId == request.auth.uid || isOwnerOrLinked(srv.acceptedProviderId)))
+          );
+        }
+
+        function isChatParticipant() {
+          return isSignedIn() &&
+                 exists(/databases/$(database)/documents/services/$(serviceId)) &&
+                 isChatParticipantForService(get(/databases/$(database)/documents/services/$(serviceId)).data);
+        }
+
+        allow get: if isValidId(messageId) && (isChatParticipant() || isAdmin());
+        allow list: if isChatParticipant() || isAdmin();
+
+        allow create: if isValidId(messageId) &&
+                         (isChatParticipant() || isAdmin()) &&
+                         incoming().serviceId == serviceId &&
+                         (incoming().senderId == request.auth.uid || isOwnerOrLinked(incoming().senderId) || incoming().senderRole == 'SISTEMA') &&
+                         incoming().keys().hasAll(['serviceId', 'senderId', 'senderName', 'senderRole', 'content', 'createdAt']) &&
+                         incoming().createdAt is timestamp &&
+                         incoming().createdAt <= request.time &&
+                         isValidChatMessage(incoming());
+
+        allow update: if false;
+        allow delete: if isAdmin();
+      }
+
+      // 6.1 Subcoleção de Histórico de Localização do Prestador (/services/{serviceId}/locationHistory/{pointId})
+      match /locationHistory/{pointId} {
+        function isLocParticipantForService(srv) {
+          return srv.clientId == request.auth.uid ||
+                 isOwnerOrLinked(srv.clientId) ||
+                 ('assignedProviderId' in srv && (srv.assignedProviderId == request.auth.uid || isOwnerOrLinked(srv.assignedProviderId))) ||
+                 ('acceptedProviderId' in srv && (srv.acceptedProviderId == request.auth.uid || isOwnerOrLinked(srv.acceptedProviderId)));
+        }
+
+        function isServiceParticipantOrAdmin() {
+          return isSignedIn() && (
+            isAdmin() || (
+              exists(/databases/$(database)/documents/services/$(serviceId)) &&
+              isLocParticipantForService(get(/databases/$(database)/documents/services/$(serviceId)).data)
+            )
+          );
+        }
+
+        function isLocAssignedProvider(srv) {
+          return ('assignedProviderId' in srv && (srv.assignedProviderId == request.auth.uid || isOwnerOrLinked(srv.assignedProviderId))) ||
+                 ('acceptedProviderId' in srv && (srv.acceptedProviderId == request.auth.uid || isOwnerOrLinked(srv.acceptedProviderId)));
+        }
+
+        allow get: if isValidId(pointId) && isServiceParticipantOrAdmin();
+        allow list: if isServiceParticipantOrAdmin();
+
+        allow create: if isSignedIn() && isValidId(pointId) &&
+                         incoming().serviceId == serviceId &&
+                         (incoming().providerId == request.auth.uid || isOwnerOrLinked(incoming().providerId)) &&
+                         (
+                           isAdmin() || (
+                             exists(/databases/$(database)/documents/services/$(serviceId)) &&
+                             isLocAssignedProvider(get(/databases/$(database)/documents/services/$(serviceId)).data)
+                           )
+                         ) &&
+                         incoming().keys().hasAll(['serviceId', 'providerId', 'latitude', 'longitude', 'createdAt']) &&
+                         incoming().createdAt is timestamp &&
+                         incoming().createdAt <= request.time &&
+                         isValidLocationPoint(incoming());
+
+        allow update, delete: if false;
+      }
+    }
+
+    // 8. Coleção de Sugestões para o Aplicativo (/appSuggestions/{suggestionId})
+    match /appSuggestions/{suggestionId} {
+      allow get: if isSignedIn() && isValidId(suggestionId) && (
+        resource.data.userId == request.auth.uid ||
+        isAdmin()
+      );
+
+      allow list: if isSignedIn() && (
+        resource.data.userId == request.auth.uid ||
+        isAdmin()
+      );
+
+      allow create: if isSignedIn() && isValidId(suggestionId) &&
+                       incoming().userId == request.auth.uid &&
+                       incoming().status == 'ENVIADA' &&
+                       incoming().keys().hasAll(['userId', 'userName', 'userRole', 'category', 'title', 'description', 'status', 'createdAt']) &&
+                       incoming().createdAt is timestamp &&
+                       incoming().createdAt <= request.time &&
+                       isValidAppSuggestion(incoming());
+
+      allow update: if isAdmin() && isValidId(suggestionId) &&
+                       incoming().userId == existing().userId &&
+                       incoming().createdAt == existing().createdAt &&
+                       isValidAppSuggestion(incoming());
+
+      allow delete: if isSignedIn() && isValidId(suggestionId) && (
+        existing().userId == request.auth.uid ||
+        isAdmin()
+      );
+    }
+
+    // 7. Coleção de Propostas e Contrapropostas (/proposals/{proposalId})
+    match /proposals/{proposalId} {
+      allow get: if isSignedIn() && isValidId(proposalId) && (
+        resource.data.clientId == request.auth.uid ||
+        resource.data.providerId == request.auth.uid ||
+        isOwnerOrLinked(resource.data.clientId) ||
+        isOwnerOrLinked(resource.data.providerId) ||
+        isServiceClient(resource.data.serviceId) ||
+        isAdmin()
+      );
+
+      allow list: if isSignedIn() && (
+        resource.data.clientId == request.auth.uid ||
+        resource.data.providerId == request.auth.uid ||
+        isOwnerOrLinked(resource.data.clientId) ||
+        isOwnerOrLinked(resource.data.providerId) ||
+        isServiceClient(resource.data.serviceId) ||
+        isAdmin()
+      );
+
+      allow create: if isSignedIn() && isValidId(proposalId) &&
+                       (incoming().providerId == request.auth.uid || isOwnerOrLinked(incoming().providerId)) &&
+                       incoming().keys().hasAll(['serviceId', 'clientId', 'providerId', 'proposedPrice', 'status', 'createdAt']) &&
+                       incoming().createdAt is timestamp &&
+                       incoming().createdAt <= request.time &&
+                       isValidProposal(incoming());
+
+      allow update: if isSignedIn() && isValidId(proposalId) &&
+                       (
+                         resource.data.clientId == request.auth.uid ||
+                         resource.data.providerId == request.auth.uid ||
+                         isOwnerOrLinked(resource.data.clientId) ||
+                         isOwnerOrLinked(resource.data.providerId) ||
+                         isServiceClient(resource.data.serviceId) ||
+                         isAdmin()
+                       ) &&
+                       incoming().serviceId == existing().serviceId &&
+                       incoming().clientId == existing().clientId &&
+                       incoming().providerId == existing().providerId &&
+                       incoming().createdAt == existing().createdAt &&
+                       isValidProposal(incoming()) &&
+                       incoming().diff(existing()).affectedKeys().hasOnly([
+                         'proposedPrice', 'estimatedDays', 'description', 'status', 'counterOffers',
+                         'isDirectAcceptance',
+                         'providerName', 'providerRating', 'providerCategory', 'providerAvatarColorHex', 'providerPhotoUrl',
+                         'updatedAt'
+                       ]);
+
+      allow delete: if isSignedIn() && isValidId(proposalId) && (
+        existing().providerId == request.auth.uid ||
+        isOwnerOrLinked(existing().providerId) ||
+        isAdmin()
+      );
+    }
+
+    // 9. Categorias de Serviços Gerenciadas pelo Admin (/serviceCategories/{categoryId})
+    match /serviceCategories/{categoryId} {
+      allow get, list: if isSignedIn();
+      allow create, update: if isAdmin() &&
+                               isValidId(categoryId) &&
+                               incoming().id == categoryId &&
+                               isValidServiceCategory(incoming());
+      allow delete: if isAdmin() && isValidId(categoryId);
+    }
+
+    // 10. Configurações Gerais e Dicas Gerenciadas pelo Admin (/appConfig/{configId})
+    match /appConfig/{configId} {
+      allow get, list: if isSignedIn();
+      allow create, update: if isAdmin() &&
+                               isValidId(configId) &&
+                               isValidAppConfig(incoming());
+      allow delete: if isAdmin() && isValidId(configId);
+    }
+
+    // 11. Avaliações Pós-Serviço de 1 a 5 Estrelas (/reviews/{reviewId})
+    match /reviews/{reviewId} {
+      function getReviewedService() {
+        return get(/databases/$(database)/documents/services/$(incoming().serviceId)).data;
+      }
+
+      allow get: if isSignedIn() && isValidId(reviewId) && (
+        resource.data.isPublic == true ||
+        resource.data.clientId == request.auth.uid ||
+        resource.data.providerId == request.auth.uid ||
+        isAdmin()
+      );
+
+      allow list: if isSignedIn() && (
+        resource.data.isPublic == true ||
+        resource.data.clientId == request.auth.uid ||
+        resource.data.providerId == request.auth.uid ||
+        isAdmin()
+      );
+
+      allow create: if isSignedIn() &&
+                       isValidId(reviewId) &&
+                       reviewId == incoming().serviceId &&
+                       incoming().clientId == request.auth.uid &&
+                       incoming().providerId != request.auth.uid &&
+                       incoming().keys().hasAll(['serviceId', 'clientId', 'clientName', 'providerId', 'rating', 'isPublic', 'createdAt']) &&
+                       incoming().keys().hasOnly([
+                         'serviceId', 'serviceTitle', 'serviceCategory',
+                         'clientId', 'clientName', 'clientPhotoUrl',
+                         'providerId', 'providerName', 'rating', 'comment',
+                         'complimentTags', 'providerReply', 'repliedAt',
+                         'isPublic', 'createdAt'
+                       ]) &&
+                       incoming().createdAt is timestamp &&
+                       incoming().createdAt <= request.time &&
+                       isValidServiceReview(incoming()) &&
+                       exists(/databases/$(database)/documents/services/$(incoming().serviceId)) &&
+                       getReviewedService().clientId == request.auth.uid &&
+                       getReviewedService().status == 'CONCLUIDO' &&
+                       (
+                         ('assignedProviderId' in getReviewedService() && getReviewedService().assignedProviderId == incoming().providerId) ||
+                         ('acceptedProviderId' in getReviewedService() && getReviewedService().acceptedProviderId == incoming().providerId)
+                       );
+
+      allow update: if isSignedIn() &&
+                       isValidId(reviewId) &&
+                       isValidServiceReview(incoming()) &&
+                       incoming().serviceId == existing().serviceId &&
+                       incoming().clientId == existing().clientId &&
+                       incoming().providerId == existing().providerId &&
+                       incoming().rating == existing().rating &&
+                       incoming().createdAt == existing().createdAt &&
+                       (
+                         isAdmin() ||
+                         (
+                           existing().providerId == request.auth.uid &&
+                           !('providerReply' in existing()) &&
+                           incoming().diff(existing()).affectedKeys().hasOnly(['providerReply', 'repliedAt']) &&
+                           incoming().providerReply is string &&
+                           incoming().providerReply.size() > 0 &&
+                           incoming().repliedAt is timestamp &&
+                           incoming().repliedAt <= request.time
+                         )
+                       );
+
+      allow delete: if isAdmin() && isValidId(reviewId);
+    }
+
+    // 12. Referências Diárias de Preço Médio Regional por Categoria (/regionalPriceBenchmarks/{benchmarkId})
+    match /regionalPriceBenchmarks/{benchmarkId} {
+      allow get, list: if isSignedIn();
+      allow create, update: if isSignedIn() &&
+                               isValidId(benchmarkId) &&
+                               incoming().id == benchmarkId &&
+                               isValidRegionalPriceBenchmark(incoming());
+      allow delete: if isAdmin() && isValidId(benchmarkId);
+    }
+  }
+}

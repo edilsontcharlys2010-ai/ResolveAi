@@ -160,4 +160,16 @@ object ContactFilter {
 
     return ContactFilterResult(isAllowed = true)
   }
+
+  /**
+   * Sanitizes any text by masking external contact patterns with a protected tag.
+   */
+  fun maskSensitiveData(text: String): String {
+    var sanitized = text
+    sanitized = EMAIL_PATTERN.matcher(sanitized).replaceAll("[E-MAIL PROTEGIDO]")
+    sanitized = URL_PATTERN.matcher(sanitized).replaceAll("[LINK PROTEGIDO]")
+    sanitized = PHONE_PATTERN.matcher(sanitized).replaceAll("[TELEFONE PROTEGIDO]")
+    sanitized = CPF_PATTERN.matcher(sanitized).replaceAll("[DOCUMENTO PROTEGIDO]")
+    return sanitized
+  }
 }
